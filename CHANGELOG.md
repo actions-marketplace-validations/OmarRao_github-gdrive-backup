@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.1.1] — 2026-09-23
+
+### Security
+
+Follow-up to 5.1.0 resolving the full **CodeQL code-scanning** backlog and
+tightening CI posture. No behavioral changes to backup/restore.
+
+- **Log injection** — user/remote-derived values (repo, session, file, and
+  owner names) are now passed through a `logger.sanitize()` barrier that strips
+  CR/LF/control characters before interpolation, preventing forged log entries.
+- **DOM XSS** — HTML-escaped all remaining dashboard sinks (GitHub username,
+  Drive folder name/ID, OAuth errors, toast messages, restore preview, and the
+  access allow-list), and escaped values interpolated into an `onclick`
+  attribute.
+- **Insecure temporary files** — the PAT-expiry marker and JSON mirror scratch
+  file now use the app-owned temp dir with unpredictable names; tests use
+  `fs.mkdtempSync`.
+- **Insecure randomness** — replaced `Math.random()` gradient-id generation with
+  `crypto.randomUUID()`.
+- **Missing rate limiting** — added a global rate limiter covering the static
+  assets and SPA catch-all route (tunable via `GLOBAL_RATE_LIMIT`), on top of
+  the stricter `/api` limiter.
+- **CI posture** — added least-privilege top-level `permissions:` to all
+  workflows and pinned the Docker base image by digest.
+- Removed dead/unused locals flagged by CodeQL.
+
+## [5.1.0] — 2026-09-23
+
+### Security
+
+A dedicated security-hardening release. No breaking changes; all existing
+backups remain restorable.
+
+- **Authenticated encryption (AES-256-GCM).** `encryption-key` archives are now
+  written with AES-256-GCM streaming authenticated encryption (magic-header
+  format `GCM1 | IV | ciphertext | auth-tag`), so tampering with a backup is
+  detected on restore instead of silently decrypting to corrupt data. Legacy
+  AES-256-CBC archives from earlier versions still decrypt transparently for
+  backward compatibility.
+- **No secrets or repo data through a shell.** Every `git` invocation now uses
+  `execFileSync` with an argument array (no shell interpolation), eliminating
+  command-injection exposure from repository, branch, or path names. The GitLab
+  token is passed via `http.extraheader` in `GIT_CONFIG_*` env vars instead of
+  being embedded in the clone URL or argv, so it never appears in process
+  listings, shell history, or error output.
+- **Dashboard server hardening.** The optional Express status server now sets
+  security headers via **helmet**, applies **express-rate-limit** (default 100
+  requests / 15 min, tunable via `API_RATE_LIMIT`), binds to `127.0.0.1` by
+  default (override with `HOST`), and can gate the `/api` routes behind a
+  constant-time API-key check (`DASHBOARD_API_KEY`, compared with
+  `crypto.timingSafeEqual`). A warning is logged if no key is configured.
+- **Content-Security-Policy + output escaping on the dashboard SPA.** All
+  remote-sourced values (repo names, session names, run details, storage
+  tooltips) are HTML-escaped, and a restrictive CSP `<meta>` locks down
+  `connect-src`/`script-src` to the required Google and GitHub origins,
+  mitigating stored/reflected XSS.
+- **Supply-chain hardening.**
+  - All GitHub Actions across every workflow (and `action.yml`) are **pinned to
+    full commit SHAs** with a trailing `# vN` comment so Dependabot can still
+    track upstream releases.
+  - Runtime dependency installs use `npm ci --ignore-scripts` (with an
+    `npm install --ignore-scripts` fallback) in workflows, the composite Action,
+    and the Dockerfile, preventing arbitrary install-time script execution.
+  - Added an **OpenSSF Scorecard** workflow (`scorecard.yml`) that publishes
+    results to the code-scanning dashboard.
+  - `npm audit` remediated to **0 known vulnerabilities**. Removed the unused
+    `multer` dependency (resolving four Dependabot alerts and reducing attack
+    surface) and pinned `qs` and `js-yaml` to patched versions via `overrides`.
+
+### Added
+- `DASHBOARD_API_KEY`, `HOST`, and `API_RATE_LIMIT` environment variables
+  (documented in `.env.example`, README, and the user guide).
+
 ## [5.0.6] — 2026-07-20
 
 ### Fixed
